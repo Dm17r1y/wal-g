@@ -125,6 +125,8 @@ const (
 
 	YcKmsKeyIDSetting  = "YC_CSE_KMS_KEY_ID"
 	YcSaKeyFileSetting = "YC_SERVICE_ACCOUNT_KEY_FILE"
+
+	PgbackrestStanza = "PGBACKREST_STANZA"
 )
 
 var (
@@ -168,7 +170,8 @@ var (
 	}
 
 	PGDefaultSettings = map[string]string{
-		PgWalSize: "16",
+		PgWalSize:        "16",
+		PgbackrestStanza: "main",
 	}
 
 	GPDefaultSettings = map[string]string{
@@ -305,6 +308,7 @@ var (
 		"PGPASSFILE":      true,
 		PrefetchDir:       true,
 		PgReadyRename:     true,
+		PgbackrestStanza:  true,
 	}
 
 	MongoAllowedSettings = map[string]bool{
@@ -381,6 +385,7 @@ func ConfigureSettings(currentType string) {
 		for k, v := range dbSpecificDefaultSettings {
 			defaultConfigValues[k] = v
 		}
+
 	}
 
 	if len(AllowedSettings) == 0 {

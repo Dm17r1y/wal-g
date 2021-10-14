@@ -165,6 +165,7 @@ func (backup *Backup) unwrapOld(
 	dbDataDirectory string, sentinelDto BackupSentinelDto, filesToUnwrap map[string]bool, createIncrementalFiles bool,
 ) error {
 	tarInterpreter := NewFileTarInterpreter(dbDataDirectory, sentinelDto, filesToUnwrap, createIncrementalFiles)
+	fileExtractor := internal.NewTarFileExtractor(tarInterpreter)
 	tarsToExtract, pgControlKey, err := backup.getTarsToExtract(sentinelDto, filesToUnwrap, false)
 	if err != nil {
 		return err
@@ -177,13 +178,13 @@ func (backup *Backup) unwrapOld(
 		return newPgControlNotFoundError()
 	}
 
-	err = internal.ExtractAll(tarInterpreter, tarsToExtract)
+	err = internal.ExtractAll(fileExtractor, tarsToExtract)
 	if err != nil {
 		return err
 	}
 
 	if needPgControl {
-		err = internal.ExtractAll(tarInterpreter, []internal.ReaderMaker{
+		err = internal.ExtractAll(fileExtractor, []internal.ReaderMaker{
 			internal.NewStorageReaderMaker(backup.getTarPartitionFolder(), pgControlKey)})
 		if err != nil {
 			return errors.Wrap(err, "failed to extract pg_control")

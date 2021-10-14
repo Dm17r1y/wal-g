@@ -136,4 +136,5 @@ require (
 	gopkg.in/yaml.v2 v2.2.8 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c // indirect
 	honnef.co/go/tools v0.0.1-2020.1.3 // indirect
+	gopkg.in/ini.v1 v1.63.2
 )
