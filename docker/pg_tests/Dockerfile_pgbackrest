@@ -1,0 +1,27 @@
+FROM wal-g/ubuntu:latest as build
+
+RUN apt-get update && apt-get install -y wget
+
+RUN mkdir -p /build
+
+RUN wget -q -O - https://github.com/pgbackrest/pgbackrest/archive/release/2.36.tar.gz | tar zx -C /build
+RUN apt-get install -y make gcc libpq-dev libssl-dev libxml2-dev pkg-config liblz4-dev libzstd-dev libbz2-dev libz-dev libyaml-dev
+
+RUN cd /build/pgbackrest-release-2.36/src && ./configure && make
+
+FROM wal-g/docker_prefix:latest
+
+COPY --from=build /build/pgbackrest-release-2.36/src/pgbackrest /usr/bin
+
+RUN chmod 755 /usr/bin/pgbackrest
+RUN mkdir -p -m 770 /var/log/pgbackrest
+RUN chown postgres:postgres /var/log/pgbackrest
+RUN mkdir -p /etc/pgbackrest
+RUN mkdir -p /etc/pgbackrest/conf.d
+RUN touch /etc/pgbackrest/pgbackrest.conf
+RUN chmod 640 /etc/pgbackrest/pgbackrest.conf
+RUN chown postgres:postgres /etc/pgbackrest/pgbackrest.conf
+
+RUN apt-get update && apt-get install -y s3cmd
+
+COPY docker/pg_tests/scripts/configs/s3cfg /var/lib/postgresql/.s3cfg
