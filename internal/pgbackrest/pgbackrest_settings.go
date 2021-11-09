@@ -10,6 +10,9 @@ const (
 	BackupPath        = "backup"
 	BackupInfoIni     = "backup.info"
 	BackupManifestIni = "backup.manifest"
+
+	BackupFolderName    = "backup"
+	BackupDataDirectory = "pg_data"
 )
 
 type BackupSettings struct {
@@ -66,11 +69,16 @@ type BackupTargetSection struct {
 	PgdataPath string
 }
 
+type PathSection struct {
+	directoryPaths []string
+}
+
 type PgbackrestManifestSettings struct {
 	BackrestSection       PgbackrestSection     `ini:"backrest"`
 	BackupSection         BackupSection         `ini:"backup"`
 	BackupTargetSection   BackupTargetSection   `ini:"backup:target"`
 	BackupDatabaseSection BackupDatabaseSection `ini:"backup:db"`
+	PathSection           PathSection
 }
 
 type BackupDatabaseSection struct {
@@ -134,7 +142,6 @@ func LoadManifest(folder storage.Folder, stanza string, backupName string) (*Pgb
 	if err := cfg.MapTo(&settings); err != nil {
 		return nil, err
 	}
+	settings.PathSection.directoryPaths = cfg.Section("target:path").KeyStrings()
 	return &settings, nil
 }
-
-

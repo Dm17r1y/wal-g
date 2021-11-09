@@ -11,42 +11,37 @@ cat ${COMMON_CONFIG} >> ${TMP_CONFIG}
 
 /usr/lib/postgresql/10/bin/initdb ${PGDATA}
 
-archive_command="/usr/bin/timeout 600 pgbackrest --stanza=main --pg1-path=/var/lib/postgresql/10/main --repo1-path=/tmp/pgbackrest-backups archive-push %p"
+archive_command="/usr/bin/timeout 600 pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backups archive-push %p"
 echo "archive_mode = on" >> ${PGDATA}/postgresql.conf
 echo "archive_command = '${archive_command}'" >> ${PGDATA}/postgresql.conf
 echo "archive_timeout = 600" >> ${PGDATA}/postgresql.conf
 
 /usr/lib/postgresql/10/bin/pg_ctl -D ${PGDATA} -w start
+/tmp/scripts/wait_while_pg_not_ready.sh
 
 mkdir -m 770 /tmp/pgbackrest-backups
 
-pgbackrest --stanza=main --pg1-path=/var/lib/postgresql/10/main --repo1-path=/tmp/pgbackrest-backups stanza-create
+pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backups stanza-create
 pgbench -i -s 5 postgres
-pg_dumpall -f /tmp/dump1
 
-pgbackrest --stanza=main --pg1-path=/var/lib/postgresql/10/main --repo1-path=/tmp/pgbackrest-backups backup
+pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backups backup
 
 /usr/lib/postgresql/10/bin/pg_ctl -D ${PGDATA} -w stop
 
 s3cmd sync /tmp/pgbackrest-backups/backup s3://pgbackrest-backups
 
 /tmp/scripts/drop_pg.sh
+pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backups restore
+rm "${PGDATA}/recovery.conf"
+tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_expected.tar ${PGDATA}
+/tmp/scripts/drop_pg.sh
 
 wal-g --config=${TMP_CONFIG} pgbackrest backup-fetch ${PGDATA} LATEST
+chmod -R o-rwx ${PGDATA}
+chmod -R g-rwx ${PGDATA}
+tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_actual.tar ${PGDATA}
 
-/usr/lib/postgresql/10/bin/pg_ctl -D ${PGDATA} -w start
-pg_dumpall -f /tmp/dump2
-
-diff /tmp/dump1 /tmp/dump2
-psql -f /tmp/scripts/amcheck.sql -v "ON_ERROR_STOP=1" postgres
-
-/usr/lib/postgresql/10/bin/pg_ctl -D ${PGDATA} -w stop
-tar -cf /var/lib/postgresql/10/main /tmp/pg_data_actual
-/tmp/scripts/drop_pg.sh
-pgbackrest --stanza=main --pg1-path=/var/lib/postgresql/10/main --repo1-path=/tmp/pgbackrest-backups restore
-tar -cf /var/lib/postgresql/10/main /tmp/pg_data_expected
-
-diff /tmp/pg_data_expected /tmp/pg_data_actual
+diff /tmp/pg_data_expected.tar /tmp/pg_data_actual.tar
 echo "Backup success!!!!!!"
 
 /tmp/scripts/drop_pg.sh

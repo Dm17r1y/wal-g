@@ -18,6 +18,7 @@ type BackupDetails struct {
 	StartLsn         uint64
 	FinishLsn        uint64
 	SystemIdentifier uint64
+	DirectoryPaths      []string
 }
 
 func GetBackupList(backupsFolder storage.Folder, stanza string) ([]internal.BackupTime, error) {
@@ -70,6 +71,7 @@ func GetBackupDetails(backupsFolder storage.Folder, stanza string, backupName st
 		StartLsn:         startLsn,
 		FinishLsn:        finishLsn,
 		SystemIdentifier: manifest.BackupDatabaseSection.SystemId,
+		DirectoryPaths:      manifest.PathSection.directoryPaths,
 	}
 
 	return &backupDetails, nil
