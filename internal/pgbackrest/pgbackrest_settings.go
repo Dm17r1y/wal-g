@@ -15,12 +15,8 @@ const (
 	BackupDataDirectory = "pg_data"
 )
 
-type BackupSettings struct {
-	Name     string
-	Settings PgbackrestBackupSettings
-}
-
 type PgbackrestBackupSettings struct {
+	Name                    string
 	BackrestFormat          int    `json:"backrest-format"`
 	BackrestVersion         string `json:"backrest-version"`
 	BackupInfoRepoSize      int64  `json:"backup-info-repo-size"`
@@ -79,6 +75,8 @@ type PgbackrestManifestSettings struct {
 	BackupTargetSection   BackupTargetSection   `ini:"backup:target"`
 	BackupDatabaseSection BackupDatabaseSection `ini:"backup:db"`
 	PathSection           PathSection
+	DefaultFileSection    DefaultFileSection `ini:"target:file:default"`
+	DefaultPathSection    DefaultPathSection `ini:"target:path:default"`
 }
 
 type BackupDatabaseSection struct {
@@ -94,7 +92,20 @@ type PgData struct {
 	PathType string `json:"type"`
 }
 
-func LoadBackupsSettings(folder storage.Folder, stanza string) ([]BackupSettings, error) {
+type DefaultFileSection struct {
+	Group  string `ini:"group"`
+	Master bool   `ini:"master"`
+	Mode   string `ini:"mode"`
+	User   string `ini:"user"`
+}
+
+type DefaultPathSection struct {
+	Group string `ini:"group"`
+	Mode  string `ini:"mode"`
+	User  string `ini:"user"`
+}
+
+func LoadBackupsSettings(folder storage.Folder, stanza string) ([]PgbackrestBackupSettings, error) {
 	backupFolder := folder.GetSubFolder(BackupPath).GetSubFolder(stanza)
 	ioReader, err := backupFolder.ReadObject(BackupInfoIni)
 	if err != nil {
@@ -111,18 +122,16 @@ func LoadBackupsSettings(folder storage.Folder, stanza string) ([]BackupSettings
 		return nil, err
 	}
 
-	var backupsSettings []BackupSettings
+	var backupsSettings []PgbackrestBackupSettings
 	for _, key := range backupSection.Keys() {
-		var settings PgbackrestBackupSettings
+		settings := PgbackrestBackupSettings{
+			Name: key.Name(),
+		}
 		if err := json.Unmarshal([]byte(key.Value()), &settings); err != nil {
 			return nil, err
 		}
 
-		backupSettings := BackupSettings{
-			Name:     key.Name(),
-			Settings: settings,
-		}
-		backupsSettings = append(backupsSettings, backupSettings)
+		backupsSettings = append(backupsSettings, settings)
 	}
 
 	return backupsSettings, nil

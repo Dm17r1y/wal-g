@@ -1,24 +1,28 @@
 package pgbackrest
 
 import (
-	"fmt"
+	"strconv"
+	"time"
+
+	"github.com/jackc/pgx"
 	"github.com/wal-g/wal-g/internal"
 	"github.com/wal-g/wal-g/pkg/storages/storage"
-	"time"
 )
 
 type BackupDetails struct {
-	BackupName       string
-	ModifiedTime     time.Time
-	WalFileName      string
-	Type             string
-	StartTime        time.Time
-	FinishTime       time.Time
-	PgVersion        string
-	StartLsn         uint64
-	FinishLsn        uint64
-	SystemIdentifier uint64
-	DirectoryPaths      []string
+	BackupName           string
+	ModifiedTime         time.Time
+	WalFileName          string
+	Type                 string
+	StartTime            time.Time
+	FinishTime           time.Time
+	PgVersion            string
+	StartLsn             uint64
+	FinishLsn            uint64
+	SystemIdentifier     uint64
+	DirectoryPaths       []string
+	DefaultFileMode      int
+	DefaultDirectoryMode int
 }
 
 func GetBackupList(backupsFolder storage.Folder, stanza string) ([]internal.BackupTime, error) {
@@ -31,8 +35,8 @@ func GetBackupList(backupsFolder storage.Folder, stanza string) ([]internal.Back
 	for _, backupSettings := range backupsSettings {
 		backupTimes = append(backupTimes, internal.BackupTime{
 			BackupName:  backupSettings.Name,
-			Time:        getTime(backupSettings.Settings.BackupTimestampStop),
-			WalFileName: backupSettings.Settings.BackupArchiveStart,
+			Time:        getTime(backupSettings.BackupTimestampStop),
+			WalFileName: backupSettings.BackupArchiveStart,
 		})
 	}
 	return backupTimes, nil
@@ -50,28 +54,39 @@ func GetBackupDetails(backupsFolder storage.Folder, stanza string, backupName st
 		WalFileName: manifest.BackupSection.BackupArchiveStart,
 	}
 
-	startLsn, err := getLsn(manifest.BackupSection.BackupLsnStart)
+	startLsn, err := pgx.ParseLSN(manifest.BackupSection.BackupLsnStart)
 	if err != nil {
 		return nil, err
 	}
 
-	finishLsn, err := getLsn(manifest.BackupSection.BackupLsnStop)
+	finishLsn, err := pgx.ParseLSN(manifest.BackupSection.BackupLsnStop)
+	if err != nil {
+		return nil, err
+	}
+
+	fileMode, err := strconv.ParseInt(manifest.DefaultFileSection.Mode, 8, 0)
+	if err != nil {
+		return nil, err
+	}
+	directoryMode, err := strconv.ParseInt(manifest.DefaultPathSection.Mode, 8, 0)
 	if err != nil {
 		return nil, err
 	}
 
 	backupDetails := BackupDetails{
-		BackupName:       backupTime.BackupName,
-		ModifiedTime:     backupTime.Time,
-		WalFileName:      backupTime.WalFileName,
-		Type:             manifest.BackupSection.BackupType,
-		StartTime:        getTime(manifest.BackupSection.BackupTimestampStart),
-		FinishTime:       getTime(manifest.BackupSection.BackupTimestampStop),
-		PgVersion:        manifest.BackupDatabaseSection.Version,
-		StartLsn:         startLsn,
-		FinishLsn:        finishLsn,
-		SystemIdentifier: manifest.BackupDatabaseSection.SystemId,
-		DirectoryPaths:      manifest.PathSection.directoryPaths,
+		BackupName:           backupTime.BackupName,
+		ModifiedTime:         backupTime.Time,
+		WalFileName:          backupTime.WalFileName,
+		Type:                 manifest.BackupSection.BackupType,
+		StartTime:            getTime(manifest.BackupSection.BackupTimestampStart),
+		FinishTime:           getTime(manifest.BackupSection.BackupTimestampStop),
+		PgVersion:            manifest.BackupDatabaseSection.Version,
+		StartLsn:             startLsn,
+		FinishLsn:            finishLsn,
+		SystemIdentifier:     manifest.BackupDatabaseSection.SystemId,
+		DirectoryPaths:       manifest.PathSection.directoryPaths,
+		DefaultFileMode:      int(fileMode),
+		DefaultDirectoryMode: int(directoryMode),
 	}
 
 	return &backupDetails, nil
@@ -79,13 +94,4 @@ func GetBackupDetails(backupsFolder storage.Folder, stanza string, backupName st
 
 func getTime(timestamp int64) time.Time {
 	return time.Unix(timestamp, 0)
-}
-
-func getLsn(lsn string) (uint64, error) {
-	var first uint64
-	var second uint64
-	if _, err := fmt.Sscanf(lsn, "%x/%x", &first, &second); err != nil {
-		return 0, err
-	}
-	return (first << 32) + second, nil
 }

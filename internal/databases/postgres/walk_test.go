@@ -181,7 +181,7 @@ func extract(t *testing.T, dir string) string {
 		t.Log(err)
 	}
 
-	err = internal.ExtractAll(internal.NewTarFileExtractor(ft), out)
+	err = internal.ExtractAll(ft, out)
 	if err != nil {
 		t.Log(err)
 	}

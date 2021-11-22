@@ -5,9 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -58,36 +55,6 @@ func (err UnsupportedFileTypeError) Error() string {
 	return fmt.Sprintf(tracelog.GetErrorFormatter(), err.error)
 }
 
-type FileExtractor interface {
-	Extract(reader io.Reader, file string) error
-}
-
-type TarFileExtractor struct {
-	interpreter TarInterpreter
-}
-
-func NewTarFileExtractor(interpreter TarInterpreter) TarFileExtractor {
-	return TarFileExtractor{interpreter: interpreter}
-}
-
-func (extractor TarFileExtractor) Extract(reader io.Reader, filePath string) error {
-	return extractOne(extractor.interpreter, reader)
-}
-
-type RawFileExtractor struct {
-	baseDirectory string
-}
-
-func NewRawFileExteractor(baseDirectory string) RawFileExtractor {
-	return RawFileExtractor{
-		baseDirectory: baseDirectory,
-	}
-}
-
-func (extractor RawFileExtractor) Extract(reader io.Reader, filePath string) error {
-	return extractFile(reader, path.Join(extractor.baseDirectory, filePath))
-}
-
 // TarInterpreter behaves differently
 // for different file types.
 type TarInterpreter interface {
@@ -107,23 +74,18 @@ func (e EmptyWriteIgnorer) Write(p []byte) (int, error) {
 	return e.WriteCloser.Write(p)
 }
 
-func extractFile(source io.Reader, filePath string) error {
-	directory := path.Dir(filePath)
-	if directory != "" {
-		err := os.MkdirAll(directory, 0755)
-		if err != nil {
-			return err
-		}
+func extractNonTar(tarInterpreter TarInterpreter, source io.Reader, path string, fileType FileType, mode int) error {
+	var typeFlag byte
+	if fileType == RegularFileType {
+		typeFlag = tar.TypeReg
+	} else {
+		typeFlag = tar.TypeDir
 	}
-	file, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
-	defer utility.LoggedClose(file, "")
-
-	_, err = io.Copy(file, source)
-	if err != nil {
-		return errors.Wrap(err, "Extract: copy failed")
-	}
-	err = file.Sync()
-	return errors.Wrap(err, "Extract: sync failed")
+	return tarInterpreter.Interpret(source, &tar.Header{
+		Name: path,
+		Mode: int64(mode),
+		Typeflag: typeFlag,
+	})
 }
 
 // TODO : unit tests
@@ -142,7 +104,7 @@ func extractOne(tarInterpreter TarInterpreter, source io.Reader) error {
 
 		err = tarInterpreter.Interpret(tarReader, header)
 		if err != nil {
-			return errors.Wrap(err, "extractOne: Extract failed")
+			return errors.Wrap(err, "extractOne: Interpret failed")
 		}
 	}
 	return nil
@@ -198,11 +160,11 @@ func DecryptAndDecompressTar(writer io.Writer, readerMaker ReaderMaker, crypter 
 // File type `.nop` is used for testing purposes. Each file is extracted
 // in its own goroutine and ExtractAll will wait for all goroutines to finish.
 // Retries unsuccessful attempts log2(MaxConcurrency) times, dividing concurrency by two each time.
-func ExtractAll(fileExtractor FileExtractor, files []ReaderMaker) error {
-	return ExtractAllWithSleeper(fileExtractor, files, NewExponentialSleeper(MinExtractRetryWait, MaxExtractRetryWait))
+func ExtractAll(tarInterpreter TarInterpreter, files []ReaderMaker) error {
+	return ExtractAllWithSleeper(tarInterpreter, files, NewExponentialSleeper(MinExtractRetryWait, MaxExtractRetryWait))
 }
 
-func ExtractAllWithSleeper(fileExtractor FileExtractor, files []ReaderMaker, sleeper Sleeper) error {
+func ExtractAllWithSleeper(tarInterpreter TarInterpreter, files []ReaderMaker, sleeper Sleeper) error {
 	if len(files) == 0 {
 		return newNoFilesToExtractError()
 	}
@@ -213,7 +175,7 @@ func ExtractAllWithSleeper(fileExtractor FileExtractor, files []ReaderMaker, sle
 		return err
 	}
 	for currentRun := files; len(currentRun) > 0; {
-		failed := tryExtractFiles(currentRun, fileExtractor, downloadingConcurrency)
+		failed := tryExtractFiles(currentRun, tarInterpreter, downloadingConcurrency)
 		if downloadingConcurrency > 1 {
 			downloadingConcurrency /= 2
 		} else if len(failed) == len(currentRun) {
@@ -231,7 +193,7 @@ func ExtractAllWithSleeper(fileExtractor FileExtractor, files []ReaderMaker, sle
 
 // TODO : unit tests
 func tryExtractFiles(files []ReaderMaker,
-	fileExtractor FileExtractor,
+	tarInterpreter TarInterpreter,
 	downloadingConcurrency int) (failed []ReaderMaker) {
 	downloadingContext := context.TODO()
 	downloadingSemaphore := semaphore.NewWeighted(int64(downloadingConcurrency))
@@ -266,13 +228,20 @@ func tryExtractFiles(files []ReaderMaker,
 		}()
 		go func() {
 			defer writingSemaphore.Release(1)
-			filePath := fileClosure.Path()
-			extension := filepath.Ext(filePath)
-
-			err := fileExtractor.Extract(extractingReader, filePath[:len(filePath)-len(extension)])
-			err = errors.Wrapf(err, "Extraction error in %s", filePath)
+			var err error
+			switch fileClosure.FileType() {
+			case TarFileType:
+				err = extractOne(tarInterpreter, extractingReader)
+			case RegularFileType:
+				filePath := utility.TrimFileExtension(fileClosure.Path())
+				err = extractNonTar(tarInterpreter, extractingReader, filePath, fileClosure.FileType(), fileClosure.Mode())
+			default:
+				tracelog.InfoLogger.Print("Unknown fileType")
+				return
+			}
+			err = errors.Wrapf(err, "Extraction error in %s", fileClosure.Path())
 			utility.LoggedClose(extractingReader, "")
-			tracelog.InfoLogger.Printf("Finished extraction of %s", filePath)
+			tracelog.InfoLogger.Printf("Finished extraction of %s", fileClosure.Path())
 			if err != nil {
 				isFailed.Store(fileClosure, true)
 				tracelog.ErrorLogger.Println(err)

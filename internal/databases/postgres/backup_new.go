@@ -89,8 +89,7 @@ func (backup *Backup) unwrapNew(
 		return nil, newPgControlNotFoundError()
 	}
 
-	tarExtractor := internal.NewTarFileExtractor(tarInterpreter)
-	err = internal.ExtractAll(tarExtractor, tarsToExtract)
+	err = internal.ExtractAll(tarInterpreter, tarsToExtract)
 	if _, ok := err.(internal.NoFilesToExtractError); ok {
 		// in case of no tars to extract, just ignore this backup and proceed to the next
 		tracelog.InfoLogger.Println("Skipping backup: no useful files found.")
@@ -102,7 +101,7 @@ func (backup *Backup) unwrapNew(
 
 	if needPgControl {
 		readerMakers := []internal.ReaderMaker{internal.NewStorageReaderMaker(backup.getTarPartitionFolder(), pgControlKey)}
-		err = internal.ExtractAll(tarExtractor, readerMakers)
+		err = internal.ExtractAll(tarInterpreter, readerMakers)
 		if err != nil {
 			return nil, errors.Wrap(err, "failed to extract pg_control")
 		}

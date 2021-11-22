@@ -26,15 +26,13 @@ const (
 
 func TestExtractAll_noFilesProvided(t *testing.T) {
 	buf := &testtools.NOPTarInterpreter{}
-	fileExtractor := internal.NewTarFileExtractor(buf)
-	err := internal.ExtractAllWithSleeper(fileExtractor, []internal.ReaderMaker{}, NOPSleeper{})
+	err := internal.ExtractAllWithSleeper(buf, []internal.ReaderMaker{}, NOPSleeper{})
 	assert.IsType(t, err, internal.NoFilesToExtractError{})
 }
 
 func TestExtractAll_fileDoesntExist(t *testing.T) {
 	readerMaker := &testtools.FileReaderMaker{Key: "testdata/booba.tar"}
-	fileExtractor := internal.NewTarFileExtractor(&testtools.NOPTarInterpreter{})
-	err := internal.ExtractAllWithSleeper(fileExtractor, []internal.ReaderMaker{readerMaker}, NOPSleeper{})
+	err := internal.ExtractAllWithSleeper(&testtools.NOPTarInterpreter{}, []internal.ReaderMaker{readerMaker}, NOPSleeper{})
 	assert.Error(t, err)
 }
 
@@ -85,7 +83,7 @@ func TestExtractAll_simpleTar(t *testing.T) {
 	buf := &testtools.BufferTarInterpreter{}
 	files := []internal.ReaderMaker{&brm}
 
-	err := internal.ExtractAllWithSleeper(internal.NewTarFileExtractor(buf), files, NOPSleeper{})
+	err := internal.ExtractAllWithSleeper(buf, files, NOPSleeper{})
 	if err != nil {
 		t.Log(err)
 	}
@@ -110,7 +108,7 @@ func TestExtractAll_multipleTars(t *testing.T) {
 
 	buf := testtools.NewConcurrentConcatBufferTarInterpreter()
 
-	err := internal.ExtractAllWithSleeper(internal.NewTarFileExtractor(buf), brms, NOPSleeper{})
+	err := internal.ExtractAllWithSleeper(buf, brms, NOPSleeper{})
 	if err != nil {
 		t.Log(err)
 	}
@@ -136,7 +134,7 @@ func TestExtractAll_multipleConcurrentTars(t *testing.T) {
 
 	buf := testtools.NewConcurrentConcatBufferTarInterpreter()
 
-	err := internal.ExtractAllWithSleeper(internal.NewTarFileExtractor(buf), brms, NOPSleeper{})
+	err := internal.ExtractAllWithSleeper(buf, brms, NOPSleeper{})
 	if err != nil {
 		t.Log(err)
 	}
@@ -294,6 +292,8 @@ type BufferReaderMaker struct {
 
 func (b *BufferReaderMaker) Reader() (io.ReadCloser, error) { return ioutil.NopCloser(b.Buf), nil }
 func (b *BufferReaderMaker) Path() string                   { return b.Key }
+func (b *BufferReaderMaker) FileType() internal.FileType    { return internal.TarFileType }
+func (b *BufferReaderMaker) Mode() int                      { return 0 }
 
 type NOPSleeper struct{}
 

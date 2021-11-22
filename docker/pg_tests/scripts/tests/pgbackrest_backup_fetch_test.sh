@@ -28,6 +28,7 @@ pgbackrest --stanza=main --pg1-path=${PGDATA} --repo1-path=/tmp/pgbackrest-backu
 
 /usr/lib/postgresql/10/bin/pg_ctl -D ${PGDATA} -w stop
 
+s3cmd mb s3://pgbackrest-backups || echo "Bucket pgbackrest-backups already exists"
 s3cmd sync /tmp/pgbackrest-backups/backup s3://pgbackrest-backups
 
 /tmp/scripts/drop_pg.sh
@@ -37,8 +38,6 @@ tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_expected.tar ${PGDATA}
 /tmp/scripts/drop_pg.sh
 
 wal-g --config=${TMP_CONFIG} pgbackrest backup-fetch ${PGDATA} LATEST
-chmod -R o-rwx ${PGDATA}
-chmod -R g-rwx ${PGDATA}
 tar --mtime='UTC 2019-01-01' --sort=name -cf /tmp/pg_data_actual.tar ${PGDATA}
 
 diff /tmp/pg_data_expected.tar /tmp/pg_data_actual.tar
