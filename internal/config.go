@@ -385,7 +385,6 @@ func ConfigureSettings(currentType string) {
 		for k, v := range dbSpecificDefaultSettings {
 			defaultConfigValues[k] = v
 		}
-
 	}
 
 	if len(AllowedSettings) == 0 {

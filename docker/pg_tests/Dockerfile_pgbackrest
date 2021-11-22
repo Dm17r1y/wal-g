@@ -13,9 +13,6 @@ FROM wal-g/docker_prefix:latest
 
 COPY --from=build /build/pgbackrest-release-2.36/src/pgbackrest /usr/bin
 
-RUN apt-get update && apt-get install -y s3cmd
-
-COPY docker/pg_tests/scripts/configs/s3cfg /var/lib/postgresql/.s3cfg
 
 RUN chmod 755 /usr/bin/pgbackrest && \
     mkdir -p -m 770 /var/log/pgbackrest && \
